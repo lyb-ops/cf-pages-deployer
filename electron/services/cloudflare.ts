@@ -202,7 +202,8 @@ export class CloudflareAPI {
       JSON.stringify({ hashes }),
       { 'Authorization': `Bearer ${jwt}`, 'Content-Type': 'application/json' }
     )
-    return Array.isArray(r) ? r : []
+    if (!r?.success) throw new Error(`checkMissing 失败: ${JSON.stringify(r?.errors || r)}`)
+    return Array.isArray(r.result) ? r.result : []
   }
 
   /** 上传文件（base64） */
@@ -222,17 +223,17 @@ export class CloudflareAPI {
     )
   }
 
-  /** upsert hash 缓存 */
+  /** upsert hash 缓存（必须成功，否则后续部署会 500） */
   async upsertHashes(jwt: string, hashes: string[]): Promise<any> {
     if (!hashes.length) return
-    try {
-      await this.requestWithHeader(
-        '/pages/assets/upsert-hashes',
-        'POST',
-        JSON.stringify({ hashes }),
-        { 'Authorization': `Bearer ${jwt}`, 'Content-Type': 'application/json' }
-      )
-    } catch { /* ignore */ }
+    const r: any = await this.requestWithHeader(
+      '/pages/assets/upsert-hashes',
+      'POST',
+      JSON.stringify({ hashes }),
+      { 'Authorization': `Bearer ${jwt}`, 'Content-Type': 'application/json' }
+    )
+    if (!r?.success) throw new Error(`upsertHashes 失败: ${JSON.stringify(r?.errors || r)}`)
+    return r
   }
 
   /** 创建部署（multipart/form-data 带 manifest） */
