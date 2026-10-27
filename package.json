@@ -1,0 +1,77 @@
+{
+  "name": "cf-pages-deployer",
+  "version": "1.0.0",
+  "description": "Cloudflare Pages 批量部署工具 - 类似 OSSBrowser2 的桌面端",
+  "main": "dist/electron/main.js",
+  "author": "cf-pages-deployer",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "postinstall": "electron-builder install-app-deps",
+    "build:win": "electron-vite build && electron-builder --win --x64",
+    "build:mac": "electron-vite build && electron-builder --mac",
+    "preview": "electron-vite preview",
+    "dist:win": "npm run build && electron-builder --win --x64 --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --publish never"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.10",
+    "keytar": "^7.9.0",
+    "vue": "^3.4.21"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.5",
+    "@types/node": "^20.11.30",
+    "@vitejs/plugin-vue": "^5.0.4",
+    "electron": "^29.1.5",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.0.0",
+    "typescript": "^5.4.3",
+    "vite": "^5.2.6",
+    "vue-tsc": "^2.0.7"
+  },
+  "build": {
+    "appId": "com.cfpages.deployer",
+    "productName": "CF Pages Deployer",
+    "directories": {
+      "output": "release"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node",
+      "node_modules/keytar/**"
+    ],
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/keytar",
+        "to": "keytar",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CF Pages Deployer"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "category": "public.app-category.developer-tools"
+    }
+  }
+}
