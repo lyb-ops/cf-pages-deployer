@@ -40,6 +40,12 @@
     "asarUnpack": [
       "**/*.node"
     ],
+    "extraResources": [
+      {
+        "from": "resources/wrangler-cli.js",
+        "to": "wrangler-cli.js"
+      }
+    ],
     "files": [
       "dist/**/*",
       "package.json"

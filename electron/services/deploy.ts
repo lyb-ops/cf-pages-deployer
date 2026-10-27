@@ -3,6 +3,8 @@ import path from 'path'
 import os from 'os'
 import https from 'https'
 import http from 'http'
+import { spawn } from 'child_process'
+import { app } from 'electron'
 import AdmZip from 'adm-zip'
 import { CloudflareAPI } from './cloudflare'
 import type { CloudflareCreds } from './crypto'
@@ -16,51 +18,55 @@ export interface BatchDeployParams {
 
 export type LogFn = (msg: string) => void
 
-interface FileContainer {
-  hash: string
-  value: Buffer
-  contentType: string
-  size: number
-}
-
-function guessContentType(filePath: string): string {
-  const ext = path.extname(filePath).toLowerCase()
-  const types: Record<string, string> = {
-    '.html': 'text/html; charset=utf-8',
-    '.htm': 'text/html; charset=utf-8',
-    '.css': 'text/css; charset=utf-8',
-    '.js': 'application/javascript; charset=utf-8',
-    '.json': 'application/json; charset=utf-8',
-    '.svg': 'image/svg+xml',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-    '.ico': 'image/x-icon',
-    '.woff': 'font/woff',
-    '.woff2': 'font/woff2',
-    '.ttf': 'font/ttf',
-    '.eot': 'application/vnd.ms-fontobject',
-    '.txt': 'text/plain; charset=utf-8',
-    '.xml': 'application/xml',
-    '.rss': 'application/rss+xml',
-    '.pdf': 'application/pdf',
-    '.zip': 'application/zip',
-    '.map': 'application/json',
-    '.webmanifest': 'application/manifest+json',
-    '.appads': 'text/plain; charset=utf-8',
-  }
-  return types[ext] || 'application/octet-stream'
-}
-
 export class DeployEngine {
   private api: CloudflareAPI
   private log: LogFn
+  private creds: CloudflareCreds
 
   constructor(creds: CloudflareCreds, log: LogFn) {
+    this.creds = creds
     this.api = new CloudflareAPI(creds)
     this.log = log
+  }
+
+  /** 调用 wrangler CLI 部署目录（官方 Direct Upload 实现） */
+  private runWrangler(dir: string, proj: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // 内置单文件 wrangler（打包后在 resources/wrangler-cli.js）
+      const candidates = [
+        path.join(process.resourcesPath || '', 'wrangler-cli.js'),
+        path.join(app.getAppPath(), 'resources', 'wrangler-cli.js'),
+        path.join(__dirname, '../../resources/wrangler-cli.js')
+      ]
+      const bin = candidates.find(p => p && fs.existsSync(p))
+      if (!bin) return reject(new Error('未找到内置 wrangler-cli.js'))
+
+      const args = [bin, 'pages', 'deploy', dir, '--project-name', proj, '--branch', 'main', '--commit-dirty=true']
+      const child = spawn(process.execPath, args, {
+        cwd: dir,
+        env: {
+          ...process.env,
+          ELECTRON_RUN_AS_NODE: '1',
+          CLOUDFLARE_API_TOKEN: this.creds.apiToken,
+          CLOUDFLARE_ACCOUNT_ID: this.creds.accountId,
+          WRANGLER_SEND_METRICS: 'false',
+          CI: 'true'
+        }
+      })
+      let out = ''
+      child.stdout?.on('data', d => { out += d.toString() })
+      child.stderr?.on('data', d => { out += d.toString() })
+      child.on('error', reject)
+      child.on('close', code => {
+        if (code === 0) {
+          const m = out.match(/https:\/\/[a-z0-9]+\.\S+\.pages\.dev/i)
+          this.log(`  ▲ wrangler 部署完成${m ? ' ' + m[0] : ''}`)
+          resolve()
+        } else {
+          reject(new Error(`wrangler 退出码 ${code}: ${out.slice(-400)}`))
+        }
+      })
+    })
   }
 
   async batchDeploy(params: BatchDeployParams): Promise<{ results: any[]; errors: string[] }> {
@@ -139,51 +145,15 @@ export class DeployEngine {
           this.log(`  🔒 保留 zip 内 app-ads.txt`)
         }
 
-        // 4) 构建文件清单
+        // 4) 统计待部署文件
         const files = this.collectFiles(finalDir)
-        const fileContainers: FileContainer[] = []
-        const manifest: Record<string, string> = {}
+        const totalSize = [...files.values()].reduce((a, b) => a + b.length, 0)
+        this.log(`  📦 共 ${files.size} 个文件，总 ${(totalSize / 1024).toFixed(1)} KB`)
 
-        for (const [relPath, content] of files) {
-          const hash = this.api.hash(content)
-          const contentType = guessContentType(relPath)
-          const size = content.length
-          manifest[relPath] = hash
-          fileContainers.push({ hash, value: content, contentType, size })
-        }
-        this.log(`  📦 共 ${fileContainers.length} 个文件，总 ${(fileContainers.reduce((a, f) => a + f.size, 0) / 1024).toFixed(1)} KB`)
+        // 5) 用 wrangler 部署（官方实现，保证 manifest 与资源注册完全正确）
+        this.log(`  🚀 部署中 ...`)
+        await this.runWrangler(finalDir, proj)
 
-        // 5) Direct Upload 流程
-        this.log(`  🔑 获取 upload JWT ...`)
-        const jwt = await this.api.getUploadJwt(proj)
-
-        const allHashes = fileContainers.map(f => f.hash)
-        this.log(`  🔍 检查已缓存文件 ...`)
-        const missingHashes = await this.api.checkMissing(jwt, allHashes)
-
-        const missingFiles = fileContainers.filter(f => missingHashes.includes(f.hash))
-        this.log(`  📤 需上传 ${missingFiles.length} 个文件 (${allHashes.length - missingFiles.length} 已缓存)`)
-
-        if (missingFiles.length > 0) {
-          // Cloudflare 限制 batch size，分批上传
-          const BATCH = 50
-          for (let i = 0; i < missingFiles.length; i += BATCH) {
-            const batch = missingFiles.slice(i, i + BATCH)
-            await this.api.uploadAssets(jwt, batch.map(f => ({
-              key: f.hash, value: f.value, contentType: f.contentType
-            })))
-            this.log(`    上传 ${Math.min(i + BATCH, missingFiles.length)}/${missingFiles.length}`)
-          }
-        }
-
-        await this.api.upsertHashes(jwt, allHashes)
-
-        // 6) 创建部署
-        this.log(`  🚀 创建部署 ...`)
-        const deployRes = await this.api.createDeployment(proj, manifest, 'main')
-        if (!deployRes?.success) {
-          throw new Error(`createDeployment 失败: ${JSON.stringify(deployRes?.errors)}`)
-        }
         const sub = (existing as any)?.result?.subdomain || proj + '.pages.dev'
         this.log(`  ✨ 部署成功: https://${sub}`)
 
