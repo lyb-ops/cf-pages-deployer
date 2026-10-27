@@ -11,6 +11,10 @@ export default defineConfig({
       }
     },
     build: {
+      outDir: resolve('dist/main'),
+      lib: {
+        entry: resolve('electron/main.ts')
+      },
       rollupOptions: {
         external: ['keytar']
       }
@@ -21,6 +25,14 @@ export default defineConfig({
     resolve: {
       alias: {
         '@': resolve('src')
+      }
+    },
+    build: {
+      outDir: resolve('dist/preload'),
+      lib: {
+        entry: {
+          index: resolve('electron/preload.ts')
+        }
       }
     }
   },

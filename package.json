@@ -2,7 +2,7 @@
   "name": "cf-pages-deployer",
   "version": "1.0.0",
   "description": "Cloudflare Pages 批量部署工具 - 类似 OSSBrowser2 的桌面端",
-  "main": "dist/electron/main.js",
+  "main": "dist/main/main.js",
   "author": "cf-pages-deployer",
   "license": "MIT",
   "scripts": {
