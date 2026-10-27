@@ -1,12 +1,24 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { resolve, join } from 'path'
-import { readdirSync, statSync } from 'fs'
+import { readdirSync, statSync, appendFileSync } from 'fs'
 import { loadCreds, saveCreds, clearCreds, type CloudflareCreds } from './services/crypto'
 import { CloudflareAPI } from './services/cloudflare'
 import { DeployEngine } from './services/deploy'
 import { DnsEngine } from './services/dns'
 
+// 调试日志（发布版可移除）
+const LOG_FILE = '/tmp/cf-pages-deployer.log'
+function dlog(...args: any[]) {
+  try {
+    const line = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')
+    appendFileSync(LOG_FILE, `[${new Date().toISOString()}] ${line}\n`)
+  } catch {}
+}
+
 let mainWindow: BrowserWindow | null = null
+
+// 虚拟机/无真实GPU环境下防止窗口闪退
+app.disableHardwareAcceleration()
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -29,6 +41,17 @@ function createWindow() {
   } else {
     mainWindow.loadFile(resolve(__dirname, '../renderer/index.html'))
   }
+
+  // 转发渲染进程 console 到日志文件
+  mainWindow.webContents.on('console-message', (_e, _level, message) => {
+    dlog('[renderer]', message)
+  })
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    dlog('[renderer] 崩溃:', JSON.stringify(details))
+  })
+  mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
+    dlog('[renderer] 加载失败:', code, desc)
+  })
 }
 
 app.whenReady().then(createWindow)
@@ -45,11 +68,15 @@ app.on('activate', () => {
 
 // --- 凭据管理 ---
 ipcMain.handle('creds:get', async () => {
-  return await loadCreds()
+  const c = await loadCreds()
+  dlog('creds:get →', c ? Object.fromEntries(Object.entries(c).map(([k, v]) => [k, `${(v || '').length}字符`])) : 'null')
+  return c
 })
 
 ipcMain.handle('creds:save', async (_e, creds: CloudflareCreds) => {
-  return await saveCreds(creds)
+  const ok = await saveCreds(creds)
+  dlog('creds:save →', ok ? '成功' : '失败', Object.fromEntries(Object.entries(creds || {}).map(([k, v]) => [k, `${(v as string || '').length}字符`])))
+  return ok
 })
 
 ipcMain.handle('creds:clear', async () => {
@@ -101,8 +128,16 @@ ipcMain.handle('fs:readDir', async (_e, dirPath: string) => {
 
 // --- Pages 项目 ---
 ipcMain.handle('pages:list', async (_e, creds: CloudflareCreds) => {
+  dlog('pages:list 开始', `accountId=${(creds?.accountId || '').length}字符 apiToken=${(creds?.apiToken || '').length}字符 globalKey=${(creds?.globalKey || '').length}字符 email=${(creds?.email || '').length}字符`)
   const api = new CloudflareAPI(creds)
-  return await api.listProjects()
+  try {
+    const list = await api.listProjects()
+    dlog('pages:list 成功, 项目数 =', list?.length)
+    return list
+  } catch (e: any) {
+    dlog('pages:list 失败 →', e?.message || String(e))
+    throw e
+  }
 })
 
 ipcMain.handle('pages:create', async (_e, creds: CloudflareCreds, name: string) => {

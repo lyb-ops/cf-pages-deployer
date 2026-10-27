@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "adm-zip": "^0.5.10",
-    "keytar": "^7.9.0",
     "vue": "^3.4.21"
   },
   "devDependencies": {
@@ -39,19 +38,11 @@
     },
     "asar": true,
     "asarUnpack": [
-      "**/*.node",
-      "node_modules/keytar/**"
+      "**/*.node"
     ],
     "files": [
       "dist/**/*",
       "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "node_modules/keytar",
-        "to": "keytar",
-        "filter": ["**/*"]
-      }
     ],
     "win": {
       "target": [

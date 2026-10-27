@@ -59,6 +59,7 @@
 
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
+import api from '../ipc'
 
 const props = defineProps<{ creds: any }>()
 const emit = defineEmits<{ saved: [c: any] }>()
@@ -77,7 +78,7 @@ const testing = ref(false)
 
 async function save() {
   saving.value = true
-  const ok = await (window as any).api.saveCreds({ ...form })
+  const ok = await api.saveCreds({ ...form })
   saving.value = false
   if (ok) {
     msg.value = '✅ 已保存到系统安全存储'
@@ -91,7 +92,7 @@ async function save() {
 
 async function test() {
   testing.value = true
-  const r = await (window as any).api.testCreds({ ...form })
+  const r = await api.testCreds({ ...form })
   testing.value = false
   msg.value = r.success ? `✅ ${r.msg}` : `❌ ${r.msg}`
   msgOk.value = r.success
@@ -99,7 +100,7 @@ async function test() {
 
 async function clear() {
   if (!confirm('确定清除所有已保存的凭据？')) return
-  await (window as any).api.clearCreds()
+  await api.clearCreds()
   Object.assign(form, { accountId: '', email: '', apiToken: '', globalKey: '' })
   msg.value = '已清除'
   msgOk.value = true

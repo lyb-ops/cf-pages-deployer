@@ -34,7 +34,12 @@
         </tbody>
       </table>
     </div>
-    <div class="card empty-hint" v-else-if="!loading">暂无项目，点击"新建项目"创建</div>
+    <div class="card empty-hint" v-else-if="!loading && !error">暂无项目，点击"新建项目"创建</div>
+    <div class="card" v-else-if="error" style="border-left:3px solid #f53f3f">
+      <div style="color:#f53f3f; font-weight:600">❌ 拉取项目失败</div>
+      <div style="color:#86909c; margin-top:6px; font-size:12px; word-break:break-all">{{ error }}</div>
+      <div style="color:#86909c; margin-top:6px; font-size:12px">请到「设置」检查 Account ID / 认证方式（API Token 或 邮箱+Global Key 至少配一种）</div>
+    </div>
 
     <!-- 新建项目弹窗 -->
     <div v-if="showCreate" style="position:fixed; inset:0; background:rgba(0,0,0,.3); display:flex; align-items:center; justify-content:center; z-index:100">
@@ -57,25 +62,36 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import api from '../ipc'
 
 const props = defineProps<{ creds: any }>()
 
 const projects = ref<any[]>([])
 const loading = ref(false)
+const error = ref('')
 const showCreate = ref(false)
 const newName = ref('')
 
 async function refresh() {
-  if (!props.creds) return
+  console.log('[refresh] 点击, creds存在=', !!props.creds, 'accountId=', props.creds?.accountId || '无')
+  if (!props.creds?.accountId) {
+    error.value = '尚未配置凭据，请先到「设置」填写'
+    return
+  }
   loading.value = true
-  const list = await (window as any).api.listProjects(props.creds)
-  projects.value = list
+  error.value = ''
+  try {
+    projects.value = await api.listProjects(props.creds)
+  } catch (e: any) {
+    projects.value = []
+    error.value = e?.message || String(e)
+  }
   loading.value = false
 }
 
 async function createProject() {
   if (!newName.value.trim()) return
-  const r = await (window as any).api.createProject(props.creds, newName.value.trim())
+  const r = await api.createProject(props.creds, newName.value.trim())
   if (r?.success) {
     alert(`✅ 已创建 ${newName.value}`)
     showCreate.value = false

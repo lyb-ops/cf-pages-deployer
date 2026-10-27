@@ -115,7 +115,19 @@ export class CloudflareAPI {
 
   // ============ Pages ============
   async listProjects(): Promise<any[]> {
-    const r: any = await this.request(`/accounts/${this.creds.accountId}/pages/projects`, 'GET', undefined, 'bearer')
+    // 优先 Bearer Token；失败且配置了 Global Key 时自动降级重试
+    let r: any
+    try {
+      r = await this.request(`/accounts/${this.creds.accountId}/pages/projects`, 'GET', undefined, 'bearer')
+    } catch {
+      r = null
+    }
+    if (!r?.success && this.creds.globalKey && this.creds.email) {
+      r = await this.request(`/accounts/${this.creds.accountId}/pages/projects`, 'GET', undefined, 'global')
+    }
+    if (!r?.success) {
+      throw new Error(r?.errors?.[0]?.message || `拉取项目失败: ${JSON.stringify(r?.errors || r).slice(0, 200)}`)
+    }
     return r?.result || []
   }
 

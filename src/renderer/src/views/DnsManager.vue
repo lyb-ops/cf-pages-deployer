@@ -113,6 +113,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import api from '../ipc'
 
 const props = defineProps<{ creds: any }>()
 
@@ -131,20 +132,20 @@ const newRec = reactive({ type: 'CNAME', name: '', content: '', proxied: true })
 async function loadZones() {
   if (!props.creds) return
   loading.value = true
-  zones.value = await (window as any).api.listZones(props.creds)
+  zones.value = await api.listZones(props.creds)
   loading.value = false
 }
 
 async function loadDns() {
   if (!selectedZoneId.value || !props.creds) { dnsRecords.value = []; return }
   loadingDns.value = true
-  dnsRecords.value = await (window as any).api.listDns(props.creds, selectedZoneId.value)
+  dnsRecords.value = await api.listDns(props.creds, selectedZoneId.value)
   loadingDns.value = false
 }
 
 async function addZone() {
   if (!newZoneName.value.trim()) return
-  const r = await (window as any).api.createZone(props.creds, newZoneName.value.trim())
+  const r = await api.createZone(props.creds, newZoneName.value.trim())
   if (r?.success) {
     const ns = r.result?.name_servers || []
     alert(`✅ Zone 已创建！\n请在域名注册商把 NS 改为：\n${ns.join('\n')}`)
@@ -159,7 +160,7 @@ async function addZone() {
 async function addRecord() {
   if (!props.creds || !selectedZoneId.value) return
   const rec: any = { type: newRec.type, name: newRec.name, content: newRec.content, proxied: newRec.proxied, ttl: 1 }
-  const r = await (window as any).api.createDns(props.creds, selectedZoneId.value, rec)
+  const r = await api.createDns(props.creds, selectedZoneId.value, rec)
   if (r?.success) {
     showAddRecord.value = false
     newRec.type = 'CNAME'; newRec.name = ''; newRec.content = ''; newRec.proxied = true
@@ -171,7 +172,7 @@ async function addRecord() {
 
 async function delRecord(r: any) {
   if (!confirm(`确定删除 ${r.type} ${r.name} ?`)) return
-  const res = await (window as any).api.deleteDns(props.creds, selectedZoneId.value, r.id)
+  const res = await api.deleteDns(props.creds, selectedZoneId.value, r.id)
   if (res?.success) loadDns()
   else alert('❌ ' + JSON.stringify(res?.errors || res))
 }

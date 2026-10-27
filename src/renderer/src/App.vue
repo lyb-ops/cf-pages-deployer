@@ -21,6 +21,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import api from './ipc'
 import Settings from './views/Settings.vue'
 import Projects from './views/Projects.vue'
 import Deploy from './views/Deploy.vue'
@@ -31,9 +32,10 @@ const creds = ref<any>(null)
 const credsOk = ref(false)
 
 async function loadCreds() {
-  const c = await (window as any).api.getCreds()
+  const c = await api.getCreds()
   creds.value = c
-  credsOk.value = !!(c?.accountId && c?.apiToken)
+  // API Token 或 邮箱+Global Key 任一种认证可用即算已配置
+  credsOk.value = !!(c?.accountId && (c?.apiToken || (c?.email && c?.globalKey)))
   if (credsOk.value) tab.value = 'projects'
 }
 

@@ -14,9 +14,6 @@ export default defineConfig({
       outDir: resolve('dist/main'),
       lib: {
         entry: resolve('electron/main.ts')
-      },
-      rollupOptions: {
-        external: ['keytar']
       }
     }
   },

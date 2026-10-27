@@ -66,6 +66,7 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
+import api from '../ipc'
 
 const props = defineProps<{ creds: any }>()
 
@@ -84,7 +85,7 @@ interface ProjectItem { projName: string; kind: string }
 const availableZips = ref<ProjectItem[]>([])
 
 async function scanDir(dirPath: string) {
-  const entries: DirEntry[] = await (window as any).api.readDir(dirPath)
+  const entries: DirEntry[] = await api.readDir(dirPath)
   if (Array.isArray(entries)) {
     const zips: ProjectItem[] = entries
       .filter((e: DirEntry) => e.kind === 'zip')
@@ -121,7 +122,7 @@ function toggleAll() {
 }
 
 async function pickDir() {
-  const d = await (window as any).api.openDirectory()
+  const d = await api.openDirectory()
   if (d) {
     sourceDir.value = d
     selectedProjects.value = []
@@ -129,7 +130,7 @@ async function pickDir() {
 }
 
 async function pickTmpl() {
-  const f = await (window as any).api.openFile([{ name: 'TXT', extensions: ['txt'] }])
+  const f = await api.openFile([{ name: 'TXT', extensions: ['txt'] }])
   if (f) appAdsTemplate.value = f
 }
 
@@ -144,7 +145,7 @@ async function startDeploy() {
     forceInjectTemplate: injectMode.value === 'force-overwrite'
   }
   try {
-    const r = await (window as any).api.batchDeploy(props.creds, params)
+    const r = await api.batchDeploy(props.creds, params)
     appendMsg(`\n✅ 部署完成！成功 ${r.results.filter((x: any) => x.success).length} / 失败 ${r.errors.length}`)
   } catch (e: any) {
     appendMsg(`\n❌ 部署异常: ${e?.message || e}`)
@@ -157,7 +158,7 @@ async function runDnsSetup() {
   if (!props.creds || !selectedProjects.value.length) return
   const domains = selectedProjects.value.map(p => ({ project: p, domain: p + '.us' }))
   log.value.push('\n--- DNS 绑定开始 ---')
-  const r = await (window as any).api.batchDnsSetup(props.creds, { sites: domains })
+  const r = await api.batchDnsSetup(props.creds, { sites: domains })
   log.value.push(`--- DNS 完成，失败 ${r.errors.length} 个 ---`)
 }
 
@@ -166,5 +167,5 @@ const logHtml = computed(() => log.value.join('\n'))
 function clearLog() { log.value = [] }
 
 // 监听主进程日志流
-;(window as any).api.onDeployLog && (window as any).api.onDeployLog((msg: string) => appendMsg(msg))
+;api.onDeployLog && api.onDeployLog((msg: string) => appendMsg(msg))
 </script>
