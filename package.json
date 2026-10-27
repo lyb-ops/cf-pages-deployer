@@ -9,7 +9,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "postinstall": "electron-builder install-app-deps",
-    "build:win": "electron-vite build && electron-builder --win --x64",
+    "build:win": "electron-vite build && electron-builder --win --x64 --publish never",
     "build:mac": "electron-vite build && electron-builder --mac",
     "preview": "electron-vite preview",
     "dist:win": "npm run build && electron-builder --win --x64 --publish never",
