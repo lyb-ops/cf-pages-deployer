@@ -32,22 +32,38 @@ export class DeployEngine {
   /** 调用 wrangler CLI 部署目录（官方 Direct Upload 实现） */
   private runWrangler(dir: string, proj: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      // 内置单文件 wrangler（打包后在 resources/wrangler-cli.js）
-      const candidates = [
-        path.join(process.resourcesPath || '', 'wrangler-cli.js'),
-        path.join(app.getAppPath(), 'resources', 'wrangler-cli.js'),
-        path.join(__dirname, '../../resources/wrangler-cli.js')
+      // 内置单文件 wrangler + 启动垫片（打包后均在 resources/ 下）
+      // 垫片作用：Electron 以 ELECTRON_RUN_AS_NODE 运行时 process.versions.electron
+      // 存在，yargs 的 hideBin() 会把脚本路径误判为用户参数，垫片负责修正。
+      const searchDirs = [
+        process.resourcesPath || '',
+        path.join(app.getAppPath(), 'resources'),
+        path.join(__dirname, '../../resources')
       ]
-      const bin = candidates.find(p => p && fs.existsSync(p))
+      const find = (name: string) =>
+        searchDirs.map(d => path.join(d, name)).find(p => p && fs.existsSync(p))
+      const bin = find('wrangler-cli.js')
+      const runner = find('wrangler-runner.js')
       if (!bin) return reject(new Error('未找到内置 wrangler-cli.js'))
+      if (!runner) return reject(new Error('未找到内置 wrangler-runner.js'))
 
-      const args = [bin, 'pages', 'deploy', dir, '--project-name', proj, '--branch', 'main', '--commit-dirty=true']
+      const args = [runner, bin, 'pages', 'deploy', dir, '--project-name', proj, '--branch', 'main', '--commit-dirty=true']
+      // wrangler 认证：优先 API Token，其次 Global Key + 邮箱（legacy）
+      const authEnv: Record<string, string> = {}
+      if (this.creds.apiToken) {
+        authEnv.CLOUDFLARE_API_TOKEN = this.creds.apiToken
+      } else if (this.creds.globalKey && this.creds.email) {
+        authEnv.CLOUDFLARE_API_KEY = this.creds.globalKey
+        authEnv.CLOUDFLARE_EMAIL = this.creds.email
+      } else {
+        return reject(new Error('缺少凭据：请在「设置」填写 API Token，或 Global Key + 邮箱'))
+      }
       const child = spawn(process.execPath, args, {
         cwd: dir,
         env: {
           ...process.env,
           ELECTRON_RUN_AS_NODE: '1',
-          CLOUDFLARE_API_TOKEN: this.creds.apiToken,
+          ...authEnv,
           CLOUDFLARE_ACCOUNT_ID: this.creds.accountId,
           WRANGLER_SEND_METRICS: 'false',
           CI: 'true'
@@ -63,7 +79,8 @@ export class DeployEngine {
           this.log(`  ▲ wrangler 部署完成${m ? ' ' + m[0] : ''}`)
           resolve()
         } else {
-          reject(new Error(`wrangler 退出码 ${code}: ${out.slice(-400)}`))
+          const clean = out.replace(/\x1b\[[0-9;]*m/g, '').replace(/\s+/g, ' ').trim()
+          reject(new Error(`wrangler 失败: ${clean.slice(-600)}`))
         }
       })
     })

@@ -44,6 +44,10 @@
       {
         "from": "resources/wrangler-cli.js",
         "to": "wrangler-cli.js"
+      },
+      {
+        "from": "resources/wrangler-runner.js",
+        "to": "wrangler-runner.js"
       }
     ],
     "files": [
